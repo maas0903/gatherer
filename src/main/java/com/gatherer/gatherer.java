@@ -29,6 +29,21 @@ import java.util.List;
 public class gatherer
 {
 
+    private static final String APPLICATION_NAME = "Gatherer";
+    private static final String CREDENTIALS_FILE_PATH = "google-sheets-client-secret.json";
+    private static String SPREADSHEET_ID = "115UPv1D8GZOrPZVAGi7olAIGxBUVSk45RespRGYPncs";
+    private static final SpreadsheetDatabase.CredentialsProvider CREDENTIALS_PROVIDER = new SpreadsheetDatabase.CredentialsProvider()
+    {
+
+        @Override
+        public InputStream getCredentials()
+        {
+            return gatherer.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
+        }
+    };
+
+    private static int SHEET_ROW_LIMIT = 10000;
+
     static String GetForConnection(String Url) throws MalformedURLException, IOException
     {
         try
@@ -61,19 +76,6 @@ public class gatherer
             return "";
         }
     }
-
-    private static final String APPLICATION_NAME = "Gatherer";
-    private static final String CREDENTIALS_FILE_PATH = "google-sheets-client-secret.json";
-    private static String SPREADSHEET_ID = "115UPv1D8GZOrPZVAGi7olAIGxBUVSk45RespRGYPncs";
-    private static final SpreadsheetDatabase.CredentialsProvider CREDENTIALS_PROVIDER = new SpreadsheetDatabase.CredentialsProvider()
-    {
-
-        @Override
-        public InputStream getCredentials()
-        {
-            return gatherer.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
-        }
-    };
 
     private static boolean toDb(String jsonString) throws GeneralSecurityException, IOException
     {
