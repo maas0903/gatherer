@@ -1,0 +1,1 @@
+{  "DEBUG": "******* true *******",  "UtcTime": "2020-06-01 13:22:08",  "DeviceCount": 1,  "Hostname": "esp01",  "IpAddress": "192.168.63.131",  "Mac Address": "84:F3:EB:E3:74:0C",  "Gpio": 2,  "Humidity": "55.00 %",  "Temperature": "22.00 °C",  "Heat_Index": "21.69 °C"}
