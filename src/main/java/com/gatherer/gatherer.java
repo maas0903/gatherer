@@ -42,7 +42,7 @@ public class gatherer
         }
     };
 
-    private static int SHEET_ROW_LIMIT = 10000;
+    private static int SHEET_ROW_LIMIT = 674;
 
     static String GetForConnection(String Url) throws MalformedURLException, IOException
     {
@@ -85,11 +85,21 @@ public class gatherer
         //SpreadsheetDatabase db = SpreadsheetDatabase.newPersonalDatabase(APPLICATION_NAME, CREDENTIALS_PROVIDER);
         SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
         db.createTableRequest("humid", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "Mac Address", "Gpio", "Humidity", "Temperature", "Heat_Index")).execute();
+        List<Record> records = db.queryRequest("humid").all().execute();
+        int count = records.size();
+        if (records.size() >= SHEET_ROW_LIMIT)
+        {
+            //delete first row
+            db.deleteRequest("humid")
+                .setRecords(Arrays.asList(records.get(0)))
+                .execute();
+        }
+
         db.updateRequest("humid")
                 .insert(new Record(Arrays.asList(humid.getDEBUG(), humid.getUtcTime(), humid.getDeviceCount(), humid.getHostname(), humid.getIpAddress(),
                         humid.getMacAddress(), humid.getGpio(), humid.getHumidity(), humid.getTemperature(), humid.getHeatIndex())))
                 .execute();
-        List<Record> records = db.queryRequest("humid").all().execute();
+        records = db.queryRequest("humid").all().execute();
 
         Table memberTable = db.getTable("humid");
 
