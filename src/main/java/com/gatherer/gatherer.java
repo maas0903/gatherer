@@ -16,10 +16,10 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Scanner;
 import com.melektro.tools.spreadsheetdb.*;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
@@ -42,7 +42,8 @@ public class gatherer
         }
     };
 
-    private static int SHEET_ROW_LIMIT = 674;
+    private static int MaxRows = 31780000;
+    private static int DeviceReadingDelay = 600000;
 
     static String GetForConnection(String Url) throws MalformedURLException, IOException
     {
@@ -53,9 +54,9 @@ public class gatherer
             con.setRequestMethod("GET");
 
             int status = con.getResponseCode();
+
             if (status == 200)
             {
-
                 BufferedReader in = new BufferedReader(
                         new InputStreamReader(con.getInputStream()));
                 String result = "";
@@ -65,14 +66,15 @@ public class gatherer
                     result = result + inputLine;
                 }
                 in.close();
-                return result;
-
-            } else
-            {
-                return "";
+                if (!result.contains("No devices found"))
+                {
+                    return result;
+                }
             }
-        } catch (Exception e)
+            return "";
+        } catch (Exception ex)
         {
+            ex.printStackTrace();
             return "";
         }
     }
@@ -80,44 +82,85 @@ public class gatherer
     private static boolean toDb(String jsonString) throws GeneralSecurityException, IOException
     {
         Gson gson = new Gson();
-        Humid humid = gson.fromJson(jsonString, Humid.class);
+        SensorsNormalised sensorsNormalised = gson.fromJson(jsonString, SensorsNormalised.class);
 
         //SpreadsheetDatabase db = SpreadsheetDatabase.newPersonalDatabase(APPLICATION_NAME, CREDENTIALS_PROVIDER);
         SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
-        db.createTableRequest("humid", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "Mac Address", "Gpio", "Humidity", "Temperature", "Heat_Index")).execute();
-        List<Record> records = db.queryRequest("humid").all().execute();
-        int count = records.size();
-        if (records.size() >= SHEET_ROW_LIMIT)
+        db.createTableRequest("Sensors", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "MacAddress", "Gpio", "DeviceType", "Id", "Value")).execute();
+        List<Record> records = db.queryRequest("Sensors").all().execute();
+
+        while (records.size() >= MaxRows)
         {
+            records = db.queryRequest("Sensors").all().execute();
             //delete first row
-            db.deleteRequest("humid")
-                .setRecords(Arrays.asList(records.get(0)))
-                .execute();
+            db.deleteRequest("Sensors")
+                    .setRecords(Arrays.asList(records.get(0)))
+                    .execute();
         }
 
-        db.updateRequest("humid")
-                .insert(new Record(Arrays.asList(humid.getDEBUG(), humid.getUtcTime(), humid.getDeviceCount(), humid.getHostname(), humid.getIpAddress(),
-                        humid.getMacAddress(), humid.getGpio(), humid.getHumidity(), humid.getTemperature(), humid.getHeatIndex())))
-                .execute();
-        records = db.queryRequest("humid").all().execute();
-
-        Table memberTable = db.getTable("humid");
-
-        System.out.println("Select all>");
-        records.forEach((record) ->
+        for (Sensor sensor : sensorsNormalised.sensors)
         {
-            System.out.printf("%s, %s, %d, %s, %s, %s, %d, %s, %s, %s\n",
-                    record.getString(memberTable.getColumnIndex("DEBUG")),
-                    record.getString(memberTable.getColumnIndex("UtcTime")),
-                    record.getInt(memberTable.getColumnIndex("DeviceCount")),
-                    record.getString(memberTable.getColumnIndex("Hostname")),
-                    record.getString(memberTable.getColumnIndex("IpAddress")),
-                    record.getString(memberTable.getColumnIndex("Mac Address")),
-                    record.getInt(memberTable.getColumnIndex("Gpio")),
-                    record.getFloat(memberTable.getColumnIndex("Humidity")),
-                    record.getFloat(memberTable.getColumnIndex("Temperature")),
-                    record.getFloat(memberTable.getColumnIndex("Heat_Index")));
-        });
+
+            String sDEBUG = sensorsNormalised.getDEBUG();
+            String sUtcTime = sensorsNormalised.getUtcTime();
+            int iDeviceCount = sensorsNormalised.getDeviceCount();
+            String sHostname = sensorsNormalised.getHostname();
+            String sIpAddress = sensorsNormalised.getIpAddress();
+            String sMacAddress = sensorsNormalised.getMacAddress();
+            int iGpio = sensorsNormalised.getGpio();
+            String sValueType = sensor.getValueType();
+            String sId = sensor.getId();
+            String sValue = sensor.getValue();
+
+            db.updateRequest("Sensors")
+                    .insert(new Record(Arrays.asList(
+                            sDEBUG,
+                            sUtcTime,
+                            iDeviceCount,
+                            sHostname,
+                            sIpAddress,
+                            sMacAddress,
+                            iGpio,
+                            sValueType,
+                            sId,
+                            sValue)))
+                    .execute();
+            records = db.queryRequest("Sensors").all().execute();
+            if (records.size() > 0)
+            {
+                System.out.print("DEBUG = " + sDEBUG + ", ");
+                System.out.print("UtcTime = " + sUtcTime + ", ");
+                System.out.print("DeviceCount = " + iDeviceCount + ", ");
+                System.out.print("Hostname = " + sHostname + ", ");
+                System.out.print("IpAddress = " + sIpAddress + ", ");
+                System.out.print("MacAddress = " + sMacAddress + ", ");
+                System.out.print("Gpio = " + iGpio + ", ");
+                System.out.print("ValueType = " + sValueType + ", ");
+                System.out.print("Id = " + sId + ", ");
+                System.out.println("Value = " + sValue);
+            } else
+            {
+                System.out.println("Nothing written");
+            }
+        }
+
+//        Table memberTable = db.getTable("Sensors");
+//
+//        System.out.println("Select all>");
+//        records.forEach((record) ->
+//        {
+//            System.out.printf("%s, %s, %d, %s, %s, %s, %d, %s, %s, %s\n",
+//                    record.getString(memberTable.getColumnIndex("DEBUG")),
+//                    record.getString(memberTable.getColumnIndex("UtcTime")),
+//                    record.getInt(memberTable.getColumnIndex("DeviceCount")),
+//                    record.getString(memberTable.getColumnIndex("Hostname")),
+//                    record.getString(memberTable.getColumnIndex("IpAddress")),
+//                    record.getString(memberTable.getColumnIndex("MacAddress")),
+//                    record.getInt(memberTable.getColumnIndex("Gpio")),
+//                    record.getString(memberTable.getColumnIndex("DeviceType")),
+//                    record.getString(memberTable.getColumnIndex("Id")),
+//                    record.getString(memberTable.getColumnIndex("Value")));
+//        });
         return false;
 
     }
@@ -125,33 +168,54 @@ public class gatherer
     public static void main(String[] args) throws InterruptedException, IOException, GeneralSecurityException
     {
 
+//        try (InputStream input = new FileInputStream("gatherer.properties"))
+//        {
+
+//            Properties prop = new Properties();
+//
+//            // load a properties file
+//            prop.load(input);
+//
+//            // get the property value and print it out
+//            System.out.println(prop.getProperty("MaxRows"));
+//            System.out.println(prop.getProperty("ReadingDelay"));
+//            System.out.println(prop.getProperty("DeviceReadingDelay"));
+//
+//        } catch (IOException ex)
+//        {
+//            ex.printStackTrace();
+//        }
+
         boolean HellFreezesOver = false;
         while (!HellFreezesOver)
         {
-            Path filePath;
-
             ArrayList<String> list;
-            try (Scanner s = new Scanner(new File("links.txt")))
+            try (Scanner fileName = new Scanner(new File("links.txt")))
             {
                 list = new ArrayList<>();
-                while (s.hasNext())
+                while (fileName.hasNext())
                 {
-                    list.add(s.next());
+                    list.add(fileName.next());
                 }
             }
 
-            String jsonString = "";
-            for (String string : list)
+            for (String fileName : list)
             {
-                jsonString = jsonString + GetForConnection(string);
-            }
-            
-            if (!jsonString.equals(""))
-            {
-                boolean toDb = toDb(jsonString);
+                if (fileName.startsWith("#"))
+                {
+                    System.out.println("***********Skipped " + fileName.substring(1));
+                } else
+                {
+                    System.out.println("***********Reading " + fileName);
+                    String jsonString = GetForConnection(fileName);
+                    if (!jsonString.equals(""))
+                    {
+                        boolean toDb = toDb(jsonString);
+                    }
+                }
             }
 
-            Thread.sleep(10000);
+            Thread.sleep(DeviceReadingDelay);
         }
     }
 }

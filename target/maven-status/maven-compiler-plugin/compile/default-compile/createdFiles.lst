@@ -1,5 +1,6 @@
-com\gatherer\gatherer$1.class
+com\gatherer\Sensors.class
+com\gatherer\SensorsNormalised.class
+com\gatherer\Sensor.class
 SheetsServiceUtil.class
 com\gatherer\GoogleAuthorizeUtil.class
 com\gatherer\Humid.class
-com\gatherer\gatherer.class

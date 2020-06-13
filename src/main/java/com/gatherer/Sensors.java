@@ -1,63 +1,57 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
 package com.gatherer;
 
 import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
+import java.util.List;
 
-public class Humid
+/**
+ *
+ * @author marius
+ */
+public class Sensors
 {
 
     @SerializedName("DEBUG")
     @Expose
     private String debug;
-    
     @SerializedName("UtcTime")
     @Expose
     private String utcTime;
-    
-    @SerializedName("DeviceCount")
-    @Expose
-    private int deviceCount;
-    
     @SerializedName("Hostname")
     @Expose
     private String hostname;
-    
     @SerializedName("IpAddress")
     @Expose
     private String ipAddress;
-    
     @SerializedName("MacAddress")
     @Expose
     private String macAddress;
-    
     @SerializedName("Gpio")
     @Expose
-    private int gpio;
-    
+    private Integer gpio;
     @SerializedName("DeviceType")
     @Expose
     private String deviceType;
-    
-    @SerializedName("Humidity")
+    @SerializedName("DeviceCount")
     @Expose
-    private float humidity;
-    
-    @SerializedName("Temperature")
+    private Integer deviceCount;
+    @SerializedName("Sensors")
     @Expose
-    private float temperature;
-    
-    @SerializedName("Heat_Index")
-    @Expose
-    private float heatIndex;
+    private List<Sensor> sensors = null;
 
     public String getDEBUG()
     {
         return debug;
     }
 
-    public void setDebug(String debug)
+    public void setDEBUG(String dEBUG)
     {
-        this.debug = debug;
+        this.debug = dEBUG;
     }
 
     public String getUtcTime()
@@ -68,16 +62,6 @@ public class Humid
     public void setUtcTime(String utcTime)
     {
         this.utcTime = utcTime;
-    }
-
-    public int getDeviceCount()
-    {
-        return deviceCount;
-    }
-
-    public void setDeviceCount(int deviceCount)
-    {
-        this.deviceCount = deviceCount;
     }
 
     public String getHostname()
@@ -110,12 +94,12 @@ public class Humid
         this.macAddress = macAddress;
     }
 
-    public int getGpio()
+    public Integer getGpio()
     {
         return gpio;
     }
 
-    public void setGpio(int gpio)
+    public void setGpio(Integer gpio)
     {
         this.gpio = gpio;
     }
@@ -130,34 +114,64 @@ public class Humid
         this.deviceType = deviceType;
     }
 
-    public float getHumidity()
+    public Integer getDeviceCount()
     {
-        return humidity;
+        return deviceCount;
     }
 
-    public void setHumidity(float humidity)
+    public void setDeviceCount(Integer deviceCount)
     {
-        this.humidity = humidity;
+        this.deviceCount = deviceCount;
     }
 
-    public float getTemperature()
+    public List<Sensor> getSensors()
     {
-        return temperature;
+        return sensors;
     }
 
-    public void setTemperature(float temperature)
+    public void setSensors(List<Sensor> sensors)
     {
-        this.temperature = temperature;
+        this.sensors = sensors;
     }
 
-    public float getHeatIndex()
+    @SerializedName("Id")
+    @Expose
+    private String id;
+    @SerializedName("ValueType")
+    @Expose
+    private String valueType;
+    @SerializedName("Value")
+    @Expose
+    private String value;
+
+    public String getId()
     {
-        return heatIndex;
+        return id;
     }
 
-    public void setHeatIndex(float heatIndex)
+    public void setId(String id)
     {
-        this.heatIndex = heatIndex;
+        this.id = id;
+    }
+
+    public String getValueType()
+    {
+        return valueType;
+    }
+
+    public void setValueType(String valueType)
+    {
+        this.valueType = valueType;
+    }
+
+    public String getValue()
+    {
+        return value;
+    }
+
+    public void setValue(String value)
+    {
+        this.value = value;
     }
 
 }

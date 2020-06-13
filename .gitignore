@@ -1,3 +1,7 @@
 /build/
 /dist/
 google-sheets-client-secret.json
+pasteipraat*.json
+StoredCredential
+surefire*
+*.class
