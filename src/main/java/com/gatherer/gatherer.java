@@ -19,12 +19,16 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Scanner;
 import com.melektro.tools.spreadsheetdb.*;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.security.GeneralSecurityException;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
+import org.apache.commons.net.ntp.NTPUDPClient;
+import org.apache.commons.net.ntp.TimeInfo;
 
 public class gatherer
 {
@@ -79,12 +83,23 @@ public class gatherer
         }
     }
 
+    private static Date getNTPDate() throws UnknownHostException, IOException
+    {
+        String TIME_SERVER = "time-a.nist.gov";   
+        NTPUDPClient timeClient = new NTPUDPClient();
+        InetAddress inetAddress = InetAddress.getByName(TIME_SERVER);
+        TimeInfo timeInfo = timeClient.getTime(inetAddress);
+        long returnTime = timeInfo.getReturnTime();
+        Date time = new Date(returnTime);
+        return time;
+    }
+
     private static boolean toDb(String jsonString) throws GeneralSecurityException, IOException
     {
+        String sNTPDate = getNTPDate().toString();
         Gson gson = new Gson();
         SensorsNormalised sensorsNormalised = gson.fromJson(jsonString, SensorsNormalised.class);
 
-        //SpreadsheetDatabase db = SpreadsheetDatabase.newPersonalDatabase(APPLICATION_NAME, CREDENTIALS_PROVIDER);
         SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
         db.createTableRequest("Sensors", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "MacAddress", "Gpio", "DeviceType", "Id", "Value")).execute();
         List<Record> records = db.queryRequest("Sensors").all().execute();
@@ -98,51 +113,52 @@ public class gatherer
                     .execute();
         }
 
-        for (Sensor sensor : sensorsNormalised.sensors)
+        try
         {
-
-            String sDEBUG = sensorsNormalised.getDEBUG();
-            String sUtcTime = sensorsNormalised.getUtcTime();
-            int iDeviceCount = sensorsNormalised.getDeviceCount();
-            String sHostname = sensorsNormalised.getHostname();
-            String sIpAddress = sensorsNormalised.getIpAddress();
-            String sMacAddress = sensorsNormalised.getMacAddress();
-            int iGpio = sensorsNormalised.getGpio();
-            String sValueType = sensor.getValueType();
-            String sId = sensor.getId();
-            String sValue = sensor.getValue();
-
-            db.updateRequest("Sensors")
-                    .insert(new Record(Arrays.asList(
-                            sDEBUG,
-                            sUtcTime,
-                            iDeviceCount,
-                            sHostname,
-                            sIpAddress,
-                            sMacAddress,
-                            iGpio,
-                            sValueType,
-                            sId,
-                            sValue)))
-                    .execute();
-            records = db.queryRequest("Sensors").all().execute();
-            if (records.size() > 0)
+            for (Sensor sensor : sensorsNormalised.sensors)
             {
-                System.out.print("DEBUG = " + sDEBUG + ", ");
-                System.out.print("UtcTime = " + sUtcTime + ", ");
-                System.out.print("DeviceCount = " + iDeviceCount + ", ");
-                System.out.print("Hostname = " + sHostname + ", ");
-                System.out.print("IpAddress = " + sIpAddress + ", ");
-                System.out.print("MacAddress = " + sMacAddress + ", ");
-                System.out.print("Gpio = " + iGpio + ", ");
-                System.out.print("ValueType = " + sValueType + ", ");
-                System.out.print("Id = " + sId + ", ");
-                System.out.println("Value = " + sValue);
-            } else
-            {
-                System.out.println("Nothing written");
+
+                String sDEBUG = sensorsNormalised.getDEBUG();
+                int iDeviceCount = sensorsNormalised.getDeviceCount();
+                String sHostname = sensorsNormalised.getHostname();
+                String sIpAddress = sensorsNormalised.getIpAddress();
+                String sMacAddress = sensorsNormalised.getMacAddress();
+                int iGpio = sensorsNormalised.getGpio();
+                String sValueType = sensor.getValueType();
+                String sId = sensor.getId();
+                String sValue = sensor.getValue();
+                        
+                db.updateRequest("Sensors")
+                        .insert(new Record(Arrays.asList(
+                                sDEBUG,
+                                sNTPDate,
+                                iDeviceCount,
+                                sHostname,
+                                sIpAddress,
+                                sMacAddress,
+                                iGpio,
+                                sValueType,
+                                sId,
+                                sValue)))
+                        .execute();
+                records = db.queryRequest("Sensors").all().execute();
+                if (records.size() > 0)
+                {
+                    System.out.print("DEBUG = " + sDEBUG + ", ");
+                    System.out.print("UtcTime = " + sNTPDate + ", ");
+                    System.out.print("DeviceCount = " + iDeviceCount + ", ");
+                    System.out.print("Hostname = " + sHostname + ", ");
+                    System.out.print("IpAddress = " + sIpAddress + ", ");
+                    System.out.print("MacAddress = " + sMacAddress + ", ");
+                    System.out.print("Gpio = " + iGpio + ", ");
+                    System.out.print("ValueType = " + sValueType + ", ");
+                    System.out.print("Id = " + sId + ", ");
+                    System.out.println("Value = " + sValue);
+                } else
+                {
+                    System.out.println("Nothing written");
+                }
             }
-        }
 
 //        Table memberTable = db.getTable("Sensors");
 //
@@ -161,6 +177,16 @@ public class gatherer
 //                    record.getString(memberTable.getColumnIndex("Id")),
 //                    record.getString(memberTable.getColumnIndex("Value")));
 //        });
+        } catch (Exception ex)
+        {
+            db.createTableRequest("Exceptions", Arrays.asList("ExceptionDate", "Exception")).execute();
+            List<Record> exceptions = db.queryRequest("Exceptions").all().execute();
+            db.updateRequest("Exceptions")
+                    .insert(new Record(Arrays.asList(
+                            sNTPDate,
+                            ex.getMessage())))
+                    .execute();
+        }
         return false;
 
     }
@@ -170,7 +196,6 @@ public class gatherer
 
 //        try (InputStream input = new FileInputStream("gatherer.properties"))
 //        {
-
 //            Properties prop = new Properties();
 //
 //            // load a properties file
@@ -185,7 +210,6 @@ public class gatherer
 //        {
 //            ex.printStackTrace();
 //        }
-
         boolean HellFreezesOver = false;
         while (!HellFreezesOver)
         {
