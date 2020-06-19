@@ -24,11 +24,16 @@ import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.security.GeneralSecurityException;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import org.apache.commons.net.ntp.NTPUDPClient;
 import org.apache.commons.net.ntp.TimeInfo;
+import com.melektro.tools.LogsFormatter;
+import static com.melektro.tools.LogsFormatter.Log;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class gatherer
 {
@@ -83,109 +88,101 @@ public class gatherer
         }
     }
 
-    private static Date getNTPDate() throws UnknownHostException, IOException
+    private static String getNTPDate() throws UnknownHostException, IOException
     {
-        String TIME_SERVER = "time-a.nist.gov";   
+        String TIME_SERVER = "pool.ntp.org";
+        //time-a.nist.gov
+        //from 8266: pool.ntp.org
         NTPUDPClient timeClient = new NTPUDPClient();
         InetAddress inetAddress = InetAddress.getByName(TIME_SERVER);
         TimeInfo timeInfo = timeClient.getTime(inetAddress);
         long returnTime = timeInfo.getReturnTime();
-        Date time = new Date(returnTime);
-        return time;
+        SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
+        return (format.format(new Date(returnTime)));
     }
 
     private static boolean toDb(String jsonString) throws GeneralSecurityException, IOException
     {
-        String sNTPDate = getNTPDate().toString();
-        Gson gson = new Gson();
-        SensorsNormalised sensorsNormalised = gson.fromJson(jsonString, SensorsNormalised.class);
-
-        SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
-        db.createTableRequest("Sensors", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "MacAddress", "Gpio", "DeviceType", "Id", "Value")).execute();
-        List<Record> records = db.queryRequest("Sensors").all().execute();
-
-        while (records.size() >= MaxRows)
-        {
-            records = db.queryRequest("Sensors").all().execute();
-            //delete first row
-            db.deleteRequest("Sensors")
-                    .setRecords(Arrays.asList(records.get(0)))
-                    .execute();
-        }
-
         try
         {
-            for (Sensor sensor : sensorsNormalised.sensors)
-            {
 
-                String sDEBUG = sensorsNormalised.getDEBUG();
-                int iDeviceCount = sensorsNormalised.getDeviceCount();
-                String sHostname = sensorsNormalised.getHostname();
-                String sIpAddress = sensorsNormalised.getIpAddress();
-                String sMacAddress = sensorsNormalised.getMacAddress();
-                int iGpio = sensorsNormalised.getGpio();
-                String sValueType = sensor.getValueType();
-                String sId = sensor.getId();
-                String sValue = sensor.getValue();
-                        
-                db.updateRequest("Sensors")
-                        .insert(new Record(Arrays.asList(
-                                sDEBUG,
-                                sNTPDate,
-                                iDeviceCount,
-                                sHostname,
-                                sIpAddress,
-                                sMacAddress,
-                                iGpio,
-                                sValueType,
-                                sId,
-                                sValue)))
-                        .execute();
+            String sNTPDate = getNTPDate();
+
+            Gson gson = new Gson();
+            SensorsNormalised sensorsNormalised = gson.fromJson(jsonString, SensorsNormalised.class);
+
+            SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
+            db.createTableRequest("Sensors", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "MacAddress", "Gpio", "DeviceType", "Id", "Value")).execute();
+            List<Record> records = db.queryRequest("Sensors").all().execute();
+
+            while (records.size() >= MaxRows)
+            {
                 records = db.queryRequest("Sensors").all().execute();
-                if (records.size() > 0)
-                {
-                    System.out.print("DEBUG = " + sDEBUG + ", ");
-                    System.out.print("UtcTime = " + sNTPDate + ", ");
-                    System.out.print("DeviceCount = " + iDeviceCount + ", ");
-                    System.out.print("Hostname = " + sHostname + ", ");
-                    System.out.print("IpAddress = " + sIpAddress + ", ");
-                    System.out.print("MacAddress = " + sMacAddress + ", ");
-                    System.out.print("Gpio = " + iGpio + ", ");
-                    System.out.print("ValueType = " + sValueType + ", ");
-                    System.out.print("Id = " + sId + ", ");
-                    System.out.println("Value = " + sValue);
-                } else
-                {
-                    System.out.println("Nothing written");
-                }
+                //delete first row
+                db.deleteRequest("Sensors")
+                        .setRecords(Arrays.asList(records.get(0)))
+                        .execute();
             }
 
-//        Table memberTable = db.getTable("Sensors");
-//
-//        System.out.println("Select all>");
-//        records.forEach((record) ->
-//        {
-//            System.out.printf("%s, %s, %d, %s, %s, %s, %d, %s, %s, %s\n",
-//                    record.getString(memberTable.getColumnIndex("DEBUG")),
-//                    record.getString(memberTable.getColumnIndex("UtcTime")),
-//                    record.getInt(memberTable.getColumnIndex("DeviceCount")),
-//                    record.getString(memberTable.getColumnIndex("Hostname")),
-//                    record.getString(memberTable.getColumnIndex("IpAddress")),
-//                    record.getString(memberTable.getColumnIndex("MacAddress")),
-//                    record.getInt(memberTable.getColumnIndex("Gpio")),
-//                    record.getString(memberTable.getColumnIndex("DeviceType")),
-//                    record.getString(memberTable.getColumnIndex("Id")),
-//                    record.getString(memberTable.getColumnIndex("Value")));
-//        });
-        } catch (Exception ex)
+            try
+            {
+                for (Sensor sensor : sensorsNormalised.sensors)
+                {
+
+                    String sDEBUG = sensorsNormalised.getDEBUG();
+                    int iDeviceCount = sensorsNormalised.getDeviceCount();
+                    String sHostname = sensorsNormalised.getHostname();
+                    String sIpAddress = sensorsNormalised.getIpAddress();
+                    String sMacAddress = sensorsNormalised.getMacAddress();
+                    int iGpio = sensorsNormalised.getGpio();
+                    String sValueType = sensor.getValueType();
+                    String sId = sensor.getId();
+                    String sValue = sensor.getValue();
+
+                    db.updateRequest("Sensors")
+                            .insert(new Record(Arrays.asList(
+                                    sDEBUG,
+                                    sNTPDate,
+                                    iDeviceCount,
+                                    sHostname,
+                                    sIpAddress,
+                                    sMacAddress,
+                                    iGpio,
+                                    sValueType,
+                                    sId,
+                                    sValue)))
+                            .execute();
+                    records = db.queryRequest("Sensors").all().execute();
+                    if (records.size() > 0)
+                    {
+                        System.out.print("DEBUG = " + sDEBUG + ", ");
+                        System.out.print("UtcTime = " + sNTPDate + ", ");
+                        System.out.print("DeviceCount = " + iDeviceCount + ", ");
+                        System.out.print("Hostname = " + sHostname + ", ");
+                        System.out.print("IpAddress = " + sIpAddress + ", ");
+                        System.out.print("MacAddress = " + sMacAddress + ", ");
+                        System.out.print("Gpio = " + iGpio + ", ");
+                        System.out.print("ValueType = " + sValueType + ", ");
+                        System.out.print("Id = " + sId + ", ");
+                        System.out.println("Value = " + sValue);
+                    } else
+                    {
+                        System.out.println("Nothing written");
+                    }
+                }
+            } catch (Exception ex)
+            {
+                db.createTableRequest("Exceptions", Arrays.asList("ExceptionDate", "Exception")).execute();
+                List<Record> exceptions = db.queryRequest("Exceptions").all().execute();
+                db.updateRequest("Exceptions")
+                        .insert(new Record(Arrays.asList(
+                                sNTPDate,
+                                ex.getMessage())))
+                        .execute();
+            }
+        } catch (Exception e)
         {
-            db.createTableRequest("Exceptions", Arrays.asList("ExceptionDate", "Exception")).execute();
-            List<Record> exceptions = db.queryRequest("Exceptions").all().execute();
-            db.updateRequest("Exceptions")
-                    .insert(new Record(Arrays.asList(
-                            sNTPDate,
-                            ex.getMessage())))
-                    .execute();
+            Log("Exception in toDB: " + e.getMessage());
         }
         return false;
 
@@ -193,52 +190,41 @@ public class gatherer
 
     public static void main(String[] args) throws InterruptedException, IOException, GeneralSecurityException
     {
-
-//        try (InputStream input = new FileInputStream("gatherer.properties"))
-//        {
-//            Properties prop = new Properties();
-//
-//            // load a properties file
-//            prop.load(input);
-//
-//            // get the property value and print it out
-//            System.out.println(prop.getProperty("MaxRows"));
-//            System.out.println(prop.getProperty("ReadingDelay"));
-//            System.out.println(prop.getProperty("DeviceReadingDelay"));
-//
-//        } catch (IOException ex)
-//        {
-//            ex.printStackTrace();
-//        }
+        Logger logger = new LogsFormatter().setLogging(Level.ALL);
         boolean HellFreezesOver = false;
         while (!HellFreezesOver)
         {
+            String sNTPDate = getNTPDate();
             ArrayList<String> list;
-            try (Scanner fileName = new Scanner(new File("links.txt")))
+            try (Scanner urlNames = new Scanner(new File("links.txt")))
             {
                 list = new ArrayList<>();
-                while (fileName.hasNext())
+                while (urlNames.hasNext())
                 {
-                    list.add(fileName.next());
+                    list.add(urlNames.next());
                 }
-            }
 
-            for (String fileName : list)
-            {
-                if (fileName.startsWith("#"))
+                for (var urlName : list)
                 {
-                    System.out.println("***********Skipped " + fileName.substring(1));
-                } else
-                {
-                    System.out.println("***********Reading " + fileName);
-                    String jsonString = GetForConnection(fileName);
-                    if (!jsonString.equals(""))
+                    if (urlName.startsWith("#"))
                     {
-                        boolean toDb = toDb(jsonString);
+                        System.out.println("***********Skipped " + urlName.substring(1));
+                    } else
+                    {
+                        System.out.println("***********Reading " + urlName);
+                        String jsonString = GetForConnection(urlName);
+                        if (!jsonString.equals(""))
+                        {
+                            boolean toDb = toDb(jsonString);
+                        }
                     }
                 }
-            }
 
+            } catch (Exception e)
+            {
+                Log("Exception in main: " + e.getMessage());
+            }
+            
             Thread.sleep(DeviceReadingDelay);
         }
     }

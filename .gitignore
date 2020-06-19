@@ -5,3 +5,8 @@ pasteipraat*.json
 StoredCredential
 surefire*
 target/
+*.log
+*.lck
+*.suo
+/.vs/
+VSWorkspaceState.json
