@@ -51,7 +51,19 @@ public class gatherer
         }
     };
 
-    private static int MaxRows = 31780000;
+    private static int MaxRows = 499992;
+    //5,000,000	  max selle
+    //500,000     max rye (10 selle per ry)
+    //8           margin
+    //499,992     rye
+    //5           aantal devices
+    //99,998      aantal lesings
+    //10          minute
+    //999,984     totaal minute
+    //16,666      totaal ure
+    //694.4333333 totaal dae
+    //1.901254848 totaal jare
+    
     private static int DeviceReadingDelay = 600000;
 
     static String GetForConnection(String Url) throws MalformedURLException, IOException
