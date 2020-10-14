@@ -9,6 +9,10 @@ package com.gatherer;
  *
  * @author marius
  */
+import com.pi4j.io.gpio.GpioController;
+import com.pi4j.io.gpio.GpioFactory;
+import com.pi4j.io.gpio.GpioPinDigitalOutput;
+import com.pi4j.io.gpio.RaspiPin;
 import com.google.gson.Gson;
 import java.io.BufferedReader;
 import java.io.File;
@@ -19,39 +23,32 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Scanner;
 import com.melektro.tools.spreadsheetdb.*;
+import com.pi4j.io.gpio.PinState;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.security.GeneralSecurityException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import org.apache.commons.net.ntp.NTPUDPClient;
 import org.apache.commons.net.ntp.TimeInfo;
-import com.melektro.tools.LogsFormatter;
-import static com.melektro.tools.LogsFormatter.Log;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class gatherer
 {
 
+    private static float verandaTemp;
+    private static float livingTemp;
+
     private static final String APPLICATION_NAME = "Gatherer";
     private static final String CREDENTIALS_FILE_PATH = "google-sheets-client-secret.json";
-    private static String SPREADSHEET_ID = "115UPv1D8GZOrPZVAGi7olAIGxBUVSk45RespRGYPncs";
-    private static final SpreadsheetDatabase.CredentialsProvider CREDENTIALS_PROVIDER = new SpreadsheetDatabase.CredentialsProvider()
-    {
+    private static final String SPREADSHEET_ID = "115UPv1D8GZOrPZVAGi7olAIGxBUVSk45RespRGYPncs";
+    private static final SpreadsheetDatabase.CredentialsProvider CREDENTIALS_PROVIDER = () -> gatherer.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
 
-        @Override
-        public InputStream getCredentials()
-        {
-            return gatherer.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
-        }
-    };
-
-    private static int MaxRows = 499992;
+    private static final int MaxRows = 499992;
     //5,000,000	  max selle
     //500,000     max rye (10 selle per ry)
     //8           margin
@@ -63,8 +60,11 @@ public class gatherer
     //16,666      totaal ure
     //694.4333333 totaal dae
     //1.901254848 totaal jare
-    
-    private static int DeviceReadingDelay = 600000;
+
+    //private static int DeviceReadingDelay = 600000;
+    //do with crontab
+    private static final int TRYREADSENSORCOUNT = 3;
+    private static final boolean DEBUG = false;
 
     static String GetForConnection(String Url) throws MalformedURLException, IOException
     {
@@ -78,24 +78,27 @@ public class gatherer
 
             if (status == 200)
             {
-                BufferedReader in = new BufferedReader(
-                        new InputStreamReader(con.getInputStream()));
-                String result = "";
-                String inputLine;
-                while ((inputLine = in.readLine()) != null)
+                String result;
+                try (BufferedReader in = new BufferedReader(
+                        new InputStreamReader(con.getInputStream())))
                 {
-                    result = result + inputLine;
+                    result = "";
+                    String inputLine;
+                    while ((inputLine = in.readLine()) != null)
+                    {
+                        result = result + inputLine;
+                    }
                 }
-                in.close();
                 if (!result.contains("No devices found"))
                 {
                     return result;
                 }
             }
             return "";
-        } catch (Exception ex)
+        } catch (IOException ex)
         {
-            ex.printStackTrace();
+            //ex.printStackTrace();
+            System.out.println("Host unreachable");
             return "";
         }
     }
@@ -112,89 +115,126 @@ public class gatherer
         SimpleDateFormat format = new SimpleDateFormat("dd/MM/yyyy HH:mm:ss");
         return (format.format(new Date(returnTime)));
     }
+    
+    private static String getSystemDate()
+    {
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+        LocalDateTime now = LocalDateTime.now();
+        return dtf.format(now);
+    }
 
-    private static boolean toDb(String jsonString) throws GeneralSecurityException, IOException
+    private static boolean toDb(String sNTPDate, String jsonString, GpioPinDigitalOutput pin00, GpioPinDigitalOutput pin02) throws GeneralSecurityException, IOException
     {
         try
         {
 
-            String sNTPDate = getNTPDate();
-
             Gson gson = new Gson();
             SensorsNormalised sensorsNormalised = gson.fromJson(jsonString, SensorsNormalised.class);
+            System.out.println("Got JSON Object");
 
-            SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
-            db.createTableRequest("Sensors", Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "MacAddress", "Gpio", "DeviceType", "Id", "Value")).execute();
-            List<Record> records = db.queryRequest("Sensors").all().execute();
+            doSomeBusinessLogic(sensorsNormalised, pin00, pin02);
 
-            while (records.size() >= MaxRows)
+            if (!DEBUG)
             {
-                records = db.queryRequest("Sensors").all().execute();
-                //delete first row
-                db.deleteRequest("Sensors")
-                        .setRecords(Arrays.asList(records.get(0)))
-                        .execute();
-            }
 
-            try
-            {
-                for (Sensor sensor : sensorsNormalised.sensors)
+                SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
+                System.out.println("Got Spreadsheet DB");
+
+                try
                 {
-
-                    String sDEBUG = sensorsNormalised.getDEBUG();
-                    int iDeviceCount = sensorsNormalised.getDeviceCount();
-                    String sHostname = sensorsNormalised.getHostname();
-                    String sIpAddress = sensorsNormalised.getIpAddress();
-                    String sMacAddress = sensorsNormalised.getMacAddress();
-                    int iGpio = sensorsNormalised.getGpio();
-                    String sValueType = sensor.getValueType();
-                    String sId = sensor.getId();
-                    String sValue = sensor.getValue();
-
-                    db.updateRequest("Sensors")
-                            .insert(new Record(Arrays.asList(
-                                    sDEBUG,
-                                    sNTPDate,
-                                    iDeviceCount,
-                                    sHostname,
-                                    sIpAddress,
-                                    sMacAddress,
-                                    iGpio,
-                                    sValueType,
-                                    sId,
-                                    sValue)))
-                            .execute();
-                    records = db.queryRequest("Sensors").all().execute();
-                    if (records.size() > 0)
+                    String tmpHostName = "";
+                    int sensorNumber = 1;
+                    for (Sensor sensor : sensorsNormalised.sensors)
                     {
-                        System.out.print("DEBUG = " + sDEBUG + ", ");
-                        System.out.print("UtcTime = " + sNTPDate + ", ");
-                        System.out.print("DeviceCount = " + iDeviceCount + ", ");
-                        System.out.print("Hostname = " + sHostname + ", ");
-                        System.out.print("IpAddress = " + sIpAddress + ", ");
-                        System.out.print("MacAddress = " + sMacAddress + ", ");
-                        System.out.print("Gpio = " + iGpio + ", ");
-                        System.out.print("ValueType = " + sValueType + ", ");
-                        System.out.print("Id = " + sId + ", ");
-                        System.out.println("Value = " + sValue);
-                    } else
-                    {
-                        System.out.println("Nothing written");
+                        if (!tmpHostName.equals(sensorsNormalised.getHostname()))
+                        {
+                            sensorNumber = 1;
+                        }
+                        String tableName = "";
+                        if (sensorsNormalised.sensors.size() > 1)
+                        {
+                            tableName = sensorsNormalised.getHostname() + sensorNumber;
+                            sensorNumber++;
+                        } else
+                        {
+                            tableName = sensorsNormalised.getHostname();
+                        }
+
+                        System.out.println("tableName=" + tableName);
+                        db.createTableRequest(tableName, Arrays.asList("DEBUG", "UtcTime", "DeviceCount", "Hostname", "IpAddress", "MacAddress", "Gpio", "DeviceType", "Id", "Value")).execute();
+                        System.out.println("createTableRequest done");
+
+                        List<SpreadsheetRecord> records = db.queryRequest(tableName).all().execute();
+                        System.out.println("queryRequest done");
+
+                        while (records.size() >= MaxRows)
+                        {
+                            records = db.queryRequest(tableName).all().execute();
+                            //delete first row
+                            db.deleteRequest(tableName)
+                                    .setRecords(Arrays.asList(records.get(0)))
+                                    .execute();
+                        }
+
+                        String sDEBUG = sensorsNormalised.getDEBUG();
+                        int iDeviceCount = sensorsNormalised.getDeviceCount();
+                        String sHostname = tableName;
+                        String sIpAddress = sensorsNormalised.getIpAddress();
+                        String sMacAddress = sensorsNormalised.getMacAddress();
+                        int iGpio = sensorsNormalised.getGpio();
+                        String sValueType = sensor.getValueType();
+                        String sId = sensor.getId();
+                        String sValue = sensor.getValue();
+
+                        System.out.println("got values from JSON object");
+
+                        db.updateRequest(tableName)
+                                .insert(new SpreadsheetRecord(Arrays.asList(
+                                        sDEBUG,
+                                        sNTPDate,
+                                        iDeviceCount,
+                                        sHostname,
+                                        sIpAddress,
+                                        sMacAddress,
+                                        iGpio,
+                                        sValueType,
+                                        sId,
+                                        sValue)))
+                                .execute();
+                        System.out.println("updateRequest done");
+                        records = db.queryRequest(tableName).all().execute();
+                        System.out.println("execute done");
+                        if (records.size() > 0)
+                        {
+                            System.out.print("DEBUG = " + sDEBUG + ", ");
+                            System.out.print("UtcTime = " + sNTPDate + ", ");
+                            System.out.print("DeviceCount = " + iDeviceCount + ", ");
+                            System.out.print("Hostname = " + sHostname + ", ");
+                            System.out.print("IpAddress = " + sIpAddress + ", ");
+                            System.out.print("MacAddress = " + sMacAddress + ", ");
+                            System.out.print("Gpio = " + iGpio + ", ");
+                            System.out.print("ValueType = " + sValueType + ", ");
+                            System.out.print("Id = " + sId + ", ");
+                            System.out.println("Value = " + sValue);
+                        } else
+                        {
+                            System.out.println("Nothing written");
+                        }
+                        tmpHostName = sensorsNormalised.getHostname();
                     }
+                } catch (Exception ex)
+                {
+                    db.createTableRequest("Exceptions", Arrays.asList("ExceptionDate", "Exception")).execute();
+                    List<SpreadsheetRecord> exceptions = db.queryRequest("Exceptions").all().execute();
+                    db.updateRequest("Exceptions")
+                            .insert(new SpreadsheetRecord(Arrays.asList(
+                                    sNTPDate,
+                                    ex.getMessage())))
+                            .execute();
                 }
-            } catch (Exception ex)
-            {
-                db.createTableRequest("Exceptions", Arrays.asList("ExceptionDate", "Exception")).execute();
-                List<Record> exceptions = db.queryRequest("Exceptions").all().execute();
-                db.updateRequest("Exceptions")
-                        .insert(new Record(Arrays.asList(
-                                sNTPDate,
-                                ex.getMessage())))
-                        .execute();
             }
         } catch (Exception e)
         {
-            Log("Exception in toDB: " + e.getMessage());
         }
         return false;
 
@@ -202,12 +242,20 @@ public class gatherer
 
     public static void main(String[] args) throws InterruptedException, IOException, GeneralSecurityException
     {
-        Logger logger = new LogsFormatter().setLogging(Level.ALL);
-        boolean HellFreezesOver = false;
-        while (!HellFreezesOver)
+        boolean hellFreezesOver = false;
+        System.out.println("GpioFactory.getInstance ok");
+        GpioController gpio = GpioFactory.getInstance();
+        GpioPinDigitalOutput pin00 = gpio.provisionDigitalOutputPin(RaspiPin.GPIO_00);
+        GpioPinDigitalOutput pin02 = gpio.provisionDigitalOutputPin(RaspiPin.GPIO_02);
+        pin00.setShutdownOptions(true, PinState.LOW);
+        pin02.setShutdownOptions(true, PinState.LOW);
+
+        while (!hellFreezesOver)
         {
-            String sNTPDate = getNTPDate();
+            System.out.println("In loop");
             ArrayList<String> list;
+            verandaTemp = -10000;
+            livingTemp = verandaTemp;
             try (Scanner urlNames = new Scanner(new File("links.txt")))
             {
                 list = new ArrayList<>();
@@ -224,20 +272,131 @@ public class gatherer
                     } else
                     {
                         System.out.println("***********Reading " + urlName);
-                        String jsonString = GetForConnection(urlName);
+                        int tryCount = 0;
+
+                        String jsonString = "";
+                        do
+                        {
+                            jsonString = GetForConnection(urlName);
+                            tryCount++;
+                            System.out.print("***********Attempt ");
+                            System.out.println(tryCount);
+                            if (jsonString.equals(""))
+                            {
+                                Thread.sleep(1000);
+                            }
+                        } while (jsonString.equals("") && tryCount <= TRYREADSENSORCOUNT);
+
                         if (!jsonString.equals(""))
                         {
-                            boolean toDb = toDb(jsonString);
+                            System.out.println("***********Read OK");
+                            //String sNTPDate = getNTPDate();
+                            String sNTPDate = getSystemDate();
+                            System.out.println("Got Time  - doing toDb now");
+                            boolean toDb = toDb(sNTPDate, jsonString, pin00, pin02);
+                            System.out.println("toDb done");
                         }
                     }
                 }
 
             } catch (Exception e)
             {
-                Log("Exception in main: " + e.getMessage());
             }
-            
-            Thread.sleep(DeviceReadingDelay);
+            System.out.println("Going to sleep - a LED should be on");
+
+            long msTime = (15 * 60 * 1000);
+            long doUntil = msTime + System.currentTimeMillis();
+            long currentTimeMillis = System.currentTimeMillis();
+            while (currentTimeMillis != doUntil)
+            {
+                /*
+                //Some live checking
+                if (currentTimeMillis % (60 * 1000) == 0)
+                {
+                    WriteToExceptions("live at");
+                }
+                */
+                currentTimeMillis = System.currentTimeMillis();
+            }
+              
+
+            pin00.low();
+            pin02.low();
+            //gpio.shutdown();
         }
     }
+
+    private static void doSomeBusinessLogic(SensorsNormalised sensorsNormalised, GpioPinDigitalOutput pin00, GpioPinDigitalOutput pin02)
+    {
+        System.out.println("host=" + sensorsNormalised.getHostname());
+        if (sensorsNormalised.getHostname().equals("veranda"))
+        {
+            var sensors = sensorsNormalised.getSensors();
+            verandaTemp = Float.parseFloat(sensors.get(1).getValue());
+            System.out.print("verandaTemp=");
+            System.out.println(verandaTemp);
+        }
+
+        if (sensorsNormalised.getHostname().equals("living"))
+        {
+            var sensors = sensorsNormalised.getSensors();
+            livingTemp = Float.parseFloat(sensors.get(0).getValue());
+            System.out.print("livingTemp=");
+            System.out.println(livingTemp);
+        }
+
+        if (livingTemp != -10000 && verandaTemp != -10000)
+        {
+            System.out.print("********* In evaluate - verandaTemp=");
+            System.out.println(verandaTemp);
+            System.out.print("********* In evaluate - livingTemp=");
+            System.out.println(livingTemp);
+            if (livingTemp > verandaTemp && livingTemp > 22)
+            {
+                try
+                {
+                    //deure en vensters oop - groen pin 11
+                    pin00.low();
+                    pin02.high();
+                    System.out.println("deure en vensters oop - groen pin 11");
+                } catch (Exception e)
+                {
+                    System.out.println("Exception setting pin");
+                }
+            }
+
+            if (livingTemp < verandaTemp && verandaTemp > 22)
+            {
+                try
+                {
+                    //deure en vensters toe - rooi - pin 13
+                    pin02.low();
+                    pin00.high();
+                    System.out.println("deure en vensters toe - rooi - pin 13");
+                } catch (Exception e)
+                {
+                    System.out.println("Exception setting pin");
+                }
+            }
+            if (livingTemp == verandaTemp && livingTemp > 22)
+            {
+                pin02.high();
+                pin00.high();
+                System.out.println("wat ookal!!");
+            }
+
+        }
+    }
+
+    private static void WriteToExceptions(String message) throws GeneralSecurityException, IOException
+    {
+        String sNTPDate = getSystemDate();
+        SpreadsheetDatabase db = SpreadsheetDatabase.getPersonalDatabase(SPREADSHEET_ID, APPLICATION_NAME, CREDENTIALS_PROVIDER);
+        db.createTableRequest("Exceptions", Arrays.asList("ExceptionDate", "Exception")).execute();
+        List<SpreadsheetRecord> exceptions = db.queryRequest("Exceptions").all().execute();
+        db.updateRequest("Exceptions")
+                .insert(new SpreadsheetRecord(Arrays.asList(sNTPDate + ":" + message)))
+                .execute();
+    }
+
 }

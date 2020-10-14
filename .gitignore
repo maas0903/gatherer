@@ -10,3 +10,4 @@ target/
 *.suo
 /.vs/
 VSWorkspaceState.json
+*.log.*
